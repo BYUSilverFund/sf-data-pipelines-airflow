@@ -731,6 +731,27 @@ def data_integrity_pipeline():
                 trade_qty
             FROM reconciled
             WHERE actual_qty_change != trade_qty
+              -- STOCK SPLIT HEURISTIC:
+              -- Ignore discrepancies if the net position change aligns with an integer forward stock split (e.g., 2:1, 3:1, 4:1)
+              -- or integer reverse stock split (e.g., 1-for-2, 1-for-5).
+              -- NOTE: If dedicated corporate action / stock split tracking is implemented in the future, remove this heuristic.
+              AND NOT (
+                  -- Forward split check (pos_qty net of trades is an exact integer multiple >= 2 of prev_pos_qty)
+                  (
+                      ABS(prev_pos_qty) > 0 
+                      AND SIGN(pos_qty - trade_qty) = SIGN(prev_pos_qty)
+                      AND ABS(pos_qty - trade_qty) > ABS(prev_pos_qty)
+                      AND MOD(ABS(pos_qty - trade_qty), ABS(prev_pos_qty)) = 0
+                  )
+                  OR
+                  -- Reverse split check (prev_pos_qty is an exact integer multiple >= 2 of pos_qty net of trades)
+                  (
+                      ABS(pos_qty - trade_qty) > 0
+                      AND SIGN(pos_qty - trade_qty) = SIGN(prev_pos_qty)
+                      AND ABS(prev_pos_qty) > ABS(pos_qty - trade_qty)
+                      AND MOD(ABS(prev_pos_qty), ABS(pos_qty - trade_qty)) = 0
+                  )
+              )
             ORDER BY report_date DESC, client_account_id, symbol;
         """
         failing_rows = hook.get_records(sql)

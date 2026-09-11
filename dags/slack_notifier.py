@@ -22,6 +22,16 @@ def slack_on_failure(context: dict) -> None:
     token = os.getenv("SLACK_BOT_TOKEN")
     channel = os.getenv("SLACK_CHANNEL_ID")
 
+    task_instance = context.get("task_instance") or context.get("ti")
+    dag_run = context.get("dag_run")
+    exception = context.get("exception")
+
+    dag_id = getattr(task_instance, "dag_id", "unknown")
+    task_id = getattr(task_instance, "task_id", "unknown")
+    run_id = getattr(dag_run, "run_id", "unknown")
+    try_number = getattr(task_instance, "try_number", "unknown")
+    error_message = repr(exception) if exception else "Unknown error"
+
     if not token or not channel:
         logger.warning(
             "SLACK_BOT_TOKEN or SLACK_CHANNEL_ID not set; skipping Slack notification"
@@ -33,7 +43,15 @@ def slack_on_failure(context: dict) -> None:
         time = _dt.datetime.now(tz=mst).strftime("%Y-%m-%d %H:%M:%S")
 
         # Format message
-        text = f"❌ Airflow Task Failed | Time: {time} MST"
+        text = (
+            "❌ Airflow Task Failed\n"
+            f"Time: {time} MST\n"
+            f"DAG: {dag_id}\n"
+            f"Run ID: {run_id}\n"
+            f"Task: {task_id}\n"
+            f"Attempt: {try_number}\n"
+            f"Error: {error_message}"
+        )
 
         client = WebClient(token=token)
         client.chat_postMessage(

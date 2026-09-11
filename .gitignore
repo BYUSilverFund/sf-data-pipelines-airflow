@@ -1,5 +1,8 @@
 # SSL certs
 /certbot
+/certbot/
+*.pem
+*.key
 /data
 
 # Airflow

@@ -709,17 +709,22 @@ def data_integrity_pipeline():
                     p.prev_date,
                     p.client_account_id,
                     p.symbol,
-                    p.prev_pos_qty,
+                    CASE 
+                        WHEN p.prev_date >= p.report_date - INTERVAL '4 days' THEN COALESCE(p.prev_pos_qty, 0)
+                        ELSE 0 
+                    END AS prev_pos_qty,
                     p.pos_qty,
                     COALESCE(t.trade_qty, 0) AS trade_qty,
-                    (p.pos_qty - COALESCE(p.prev_pos_qty, 0)) AS actual_qty_change
+                    (p.pos_qty - CASE 
+                        WHEN p.prev_date >= p.report_date - INTERVAL '4 days' THEN COALESCE(p.prev_pos_qty, 0)
+                        ELSE 0 
+                    END) AS actual_qty_change
                 FROM daily_pos p
                 LEFT JOIN daily_trades t 
                   ON p.report_date = t.report_date 
                  AND p.client_account_id = t.client_account_id 
                  AND p.symbol = t.symbol
-                WHERE p.prev_date IS NOT NULL
-                  AND p.report_date >= CURRENT_DATE - INTERVAL '14 days'
+                WHERE p.report_date >= CURRENT_DATE - INTERVAL '14 days'
             )
             SELECT 
                 report_date,

@@ -111,10 +111,15 @@ def positions_transform_and_load_backfill(from_date: dt.date, to_date: dt.date):
     )
     daily_files = fs.glob("s3://ibkr-flex-query-files/daily-files/*/*/*positions.csv")
 
-    file_list = list(set(backfill_files + history_files + daily_files))
+    # Prefer the newly fetched backfill row over older daily and history rows.
+    source_files = (
+        [(3, path) for path in sorted(backfill_files)]
+        + [(2, path) for path in sorted(daily_files)]
+        + [(1, path) for path in sorted(history_files)]
+    )
 
     dfs = []
-    for file in file_list:
+    for priority, file in source_files:
         try:
             df = pl.read_csv(
                 f"s3://{file}",
@@ -126,14 +131,27 @@ def positions_transform_and_load_backfill(from_date: dt.date, to_date: dt.date):
                 pl.col("report_date").is_between(from_date, to_date)
             )
             if not df_filtered.is_empty():
-                dfs.append(df_filtered)
+                dfs.append(
+                    df_filtered.with_columns(
+                        pl.lit(priority).alias("_source_priority")
+                    )
+                )
         except Exception:
             continue
 
     if not dfs:
         return
 
-    df = pl.concat(dfs).unique(subset=["report_date", "client_account_id", "symbol"])
+    df = (
+        pl.concat(dfs)
+        .sort("_source_priority", descending=True, maintain_order=True)
+        .unique(
+            subset=["report_date", "client_account_id", "symbol"],
+            keep="first",
+            maintain_order=True,
+        )
+        .drop("_source_priority")
+    )
 
     if df.is_empty():
         return

@@ -132,9 +132,7 @@ def positions_transform_and_load_backfill(from_date: dt.date, to_date: dt.date):
             )
             if not df_filtered.is_empty():
                 dfs.append(
-                    df_filtered.with_columns(
-                        pl.lit(priority).alias("_source_priority")
-                    )
+                    df_filtered.with_columns(pl.lit(priority).alias("_source_priority"))
                 )
         except Exception:
             continue

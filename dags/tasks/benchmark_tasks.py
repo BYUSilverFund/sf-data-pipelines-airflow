@@ -32,10 +32,7 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
     if data.empty:
         raise ValueError(f"Yahoo returned no IWV price for {start_date} to {end_date}")
     df = pl.from_pandas(data.stack(future_stack=True).reset_index())
-    invalid_prices = df.filter(
-        pl.col("Close").is_null()
-        | (pl.col("Close") <= 0)
-    )
+    invalid_prices = df.filter(pl.col("Close").is_null() | (pl.col("Close") <= 0))
     if not invalid_prices.is_empty():
         raise ValueError(
             f"Yahoo returned {invalid_prices.height} invalid IWV closing prices"
@@ -56,11 +53,9 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
                 + ", ".join(map(str, missing_dates))
             )
     requested_rows = df.filter(
-    pl.col("Date").cast(pl.Date).is_between(start_date, end_date)
+        pl.col("Date").cast(pl.Date).is_between(start_date, end_date)
     )
-    earlier_rows = df.filter(
-        pl.col("Date").cast(pl.Date) < start_date
-    )
+    earlier_rows = df.filter(pl.col("Date").cast(pl.Date) < start_date)
     if not requested_rows.is_empty() and earlier_rows.is_empty():
         raise ValueError(
             f"Yahoo returned no prior IWV price to calculate the return for {start_date}"
@@ -78,6 +73,7 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
         .drop_nulls("return")
         .sort("date")
     )
+
 
 logger = logging.getLogger(__name__)
 

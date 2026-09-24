@@ -4,6 +4,7 @@ import os
 
 import config
 import dotenv
+import pandas_market_calendars as mcal
 import polars as pl
 import requests
 import yfinance as yf
@@ -24,16 +25,46 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
     query_end = end_date + dt.timedelta(days=1)
     data = yf.download(
         tickers=["IWV"],
-        start=start_date.isoformat(),
+        start=(start_date - dt.timedelta(days=7)).isoformat(),
         end=query_end.isoformat(),
         actions=True,
     )
     if data.empty:
-        df = pl.DataFrame(
-            {"Date": start_date, "Ticker": "IWV", "Close": 0, "Dividends": 0}
+        raise ValueError(f"Yahoo returned no IWV price for {start_date} to {end_date}")
+    df = pl.from_pandas(data.stack(future_stack=True).reset_index())
+    invalid_prices = df.filter(
+        pl.col("Close").is_null()
+        | (pl.col("Close") <= 0)
+    )
+    if not invalid_prices.is_empty():
+        raise ValueError(
+            f"Yahoo returned {invalid_prices.height} invalid IWV closing prices"
         )
-    else:
-        df = pl.from_pandas(data.stack(future_stack=True).reset_index())
+    last_completed_date = min(end_date, dt.date.today() - dt.timedelta(days=1))
+    if start_date <= last_completed_date:
+        schedule = mcal.get_calendar("NYSE").schedule(
+            start_date=start_date.isoformat(),
+            end_date=last_completed_date.isoformat(),
+        )
+        expected_dates = set(schedule.index.date)
+        received_dates = set(df.get_column("Date").cast(pl.Date).to_list())
+        missing_dates = sorted(expected_dates - received_dates)
+
+        if missing_dates:
+            raise ValueError(
+                "Yahoo returned no IWV prices for market dates: "
+                + ", ".join(map(str, missing_dates))
+            )
+    requested_rows = df.filter(
+    pl.col("Date").cast(pl.Date).is_between(start_date, end_date)
+    )
+    earlier_rows = df.filter(
+        pl.col("Date").cast(pl.Date) < start_date
+    )
+    if not requested_rows.is_empty() and earlier_rows.is_empty():
+        raise ValueError(
+            f"Yahoo returned no prior IWV price to calculate the return for {start_date}"
+        )
     return (
         df.select(column_mapping.keys())
         .rename(column_mapping)
@@ -42,11 +73,11 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
             pl.col("date").dt.date(),
             pl.col("adjusted_close").pct_change().alias("return"),
         )
+        .filter(pl.col("date").is_between(start_date, end_date))
         .with_columns(pl.col("return").fill_null(0.0))
         .drop_nulls("return")
         .sort("date")
     )
-
 
 logger = logging.getLogger(__name__)
 

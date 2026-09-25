@@ -37,6 +37,9 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
         raise ValueError(
             f"Yahoo returned {invalid_prices.height} invalid IWV closing prices"
         )
+    
+    missing_dates = []
+    
     last_completed_date = min(end_date, dt.date.today() - dt.timedelta(days=1))
     if start_date <= last_completed_date:
         schedule = mcal.get_calendar("NYSE").schedule(

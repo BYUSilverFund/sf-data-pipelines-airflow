@@ -37,9 +37,9 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
         raise ValueError(
             f"Yahoo returned {invalid_prices.height} invalid IWV closing prices"
         )
-    
+
     missing_dates = []
-    
+
     last_completed_date = min(end_date, dt.date.today() - dt.timedelta(days=1))
     if start_date <= last_completed_date:
         schedule = mcal.get_calendar("NYSE").schedule(
@@ -229,7 +229,7 @@ def benchmark_etl_daily() -> None:
 def benchmark_etl_backfill(from_date: dt.date, to_date: dt.date) -> None:
     # 1. Create core table if not exists
     db.execute_sql_file("dags/sql/benchmark_create.sql")
-    
+
     # 2. Pull calendar data
     df = get_benchmark_data(from_date, to_date)
 
@@ -253,7 +253,7 @@ def benchmark_etl_reload() -> None:
 
     # 1. Create core table if not exists
     db.execute_sql_file("dags/sql/benchmark_create.sql")
-    
+
     # 2. Pull calendar data
     df = get_benchmark_data(from_date, to_date)
 

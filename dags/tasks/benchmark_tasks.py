@@ -71,25 +71,25 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
             else set()
         )
 
-    still_missing = sorted(set(missing_dates) - fallback_dates)
+        still_missing = sorted(set(missing_dates) - fallback_dates)
 
-    if still_missing:
-        raise ValueError(
-            "IWV prices missing from both Yahoo and benchmark DB for market dates: "
-            + ", ".join(map(str, still_missing))
-        )
+        if still_missing:
+            raise ValueError(
+                "IWV prices missing from both Yahoo and benchmark DB for market dates: "
+                + ", ".join(map(str, still_missing))
+            )
 
-    df = pl.concat(
-        [
-            df,
-            fallback.with_columns(
-                pl.col("Date").cast(df.schema["Date"]),
-                pl.col("Close").cast(df.schema["Close"]),
-                pl.col("Dividends").cast(df.schema["Dividends"]),
-            ),
-        ],
-        how="diagonal_relaxed",
-    ).sort("Date")
+        df = pl.concat(
+            [
+                df,
+                fallback.with_columns(
+                    pl.col("Date").cast(df.schema["Date"]),
+                    pl.col("Close").cast(df.schema["Close"]),
+                    pl.col("Dividends").cast(df.schema["Dividends"]),
+                ),
+            ],
+            how="diagonal_relaxed",
+        ).sort("Date")
     requested_rows = df.filter(
         pl.col("Date").cast(pl.Date).is_between(start_date, end_date)
     )
@@ -224,11 +224,11 @@ def benchmark_etl_daily() -> None:
 
 @task(task_id="benchmark_etl")
 def benchmark_etl_backfill(from_date: dt.date, to_date: dt.date) -> None:
-    # 1. Pull calendar data
-    df = get_benchmark_data(from_date, to_date)
-
-    # 2. Create core table if not exists
+    # 1. Create core table if not exists
     db.execute_sql_file("dags/sql/benchmark_create.sql")
+    
+    # 2. Pull calendar data
+    df = get_benchmark_data(from_date, to_date)
 
     # 3. Load into stage table
     stage_table = f"{from_date}_{to_date}_BENCHMARK"
@@ -248,11 +248,11 @@ def benchmark_etl_reload() -> None:
     from_date = config.min_date
     to_date = dt.date.today()
 
-    # 1. Pull calendar data
-    df = get_benchmark_data(from_date, to_date)
-
-    # 2. Create core table if not exists
+    # 1. Create core table if not exists
     db.execute_sql_file("dags/sql/benchmark_create.sql")
+    
+    # 2. Pull calendar data
+    df = get_benchmark_data(from_date, to_date)
 
     # 3. Load into stage table
     stage_table = f"{from_date}_{to_date}_BENCHMARK"

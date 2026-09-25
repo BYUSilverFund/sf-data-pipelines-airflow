@@ -47,11 +47,49 @@ def get_benchmark_data(start_date: dt.date, end_date: dt.date) -> pl.DataFrame:
         received_dates = set(df.get_column("Date").cast(pl.Date).to_list())
         missing_dates = sorted(expected_dates - received_dates)
 
-        if missing_dates:
-            raise ValueError(
-                "Yahoo returned no IWV prices for market dates: "
-                + ", ".join(map(str, missing_dates))
-            )
+    if missing_dates:
+        missing_date_strings = ", ".join(
+            f"'{date.isoformat()}'" for date in missing_dates
+        )
+
+        fallback = db.read_sql(
+            f"""
+            SELECT
+                date AS "Date",
+                ticker AS "Ticker",
+                adjusted_close AS "Close",
+                dividends_per_share AS "Dividends"
+            FROM benchmark
+            WHERE ticker = 'IWV'
+            AND date IN ({missing_date_strings})
+            """
+        )
+
+        fallback_dates = (
+            set(fallback.get_column("Date").cast(pl.Date).to_list())
+            if not fallback.is_empty()
+            else set()
+        )
+
+    still_missing = sorted(set(missing_dates) - fallback_dates)
+
+    if still_missing:
+        raise ValueError(
+            "IWV prices missing from both Yahoo and benchmark DB for market dates: "
+            + ", ".join(map(str, still_missing))
+        )
+
+    df = pl.concat(
+        [
+            df,
+            fallback.with_columns(
+                pl.col("Date").cast(df.schema["Date"]),
+                pl.col("Close").cast(df.schema["Close"]),
+                pl.col("Dividends").cast(df.schema["Dividends"]),
+            ),
+        ],
+        how="diagonal_relaxed",
+    ).sort("Date")
     requested_rows = df.filter(
         pl.col("Date").cast(pl.Date).is_between(start_date, end_date)
     )
@@ -165,11 +203,11 @@ def benchmark_etl_daily() -> None:
     from_date = config.min_date
     to_date = dt.date.today()
 
-    # 1. Pull calendar data
-    df = get_benchmark_data(from_date, to_date)
-
-    # 2. Create core table if not exists
+    # 1. Create core table if not exists
     db.execute_sql_file("dags/sql/benchmark_create.sql")
+
+    # 2. Pull calendar data
+    df = get_benchmark_data(from_date, to_date)
 
     # 3. Load into stage table
     stage_table = f"{to_date}_BENCHMARK"

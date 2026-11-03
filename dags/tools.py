@@ -107,7 +107,11 @@ def ibkr_query(
 
     # Validate http status code
     if send_response.status_code != 200:
-        raise Exception("Failed to send request:", send_response.text)
+        # Do not include the provider response in the exception: task failures are
+        # logged by Airflow and responses may contain sensitive request details.
+        raise RuntimeError(
+            f"IBKR SendRequest failed with HTTP {send_response.status_code}"
+        )
 
     # Parse XML
     tree = ET.ElementTree(ET.fromstring(send_response.text))
@@ -117,10 +121,10 @@ def ibkr_query(
     status = root.findtext("Status")
     if status != "Success":
         error_code = root.findtext("ErrorCode")
-        error_message = root.findtext("ErrorMessage")
-        print(send_params)
-        print(send_response.text)
-        raise Exception("Failed to send request:", error_code, error_message)
+        # Never log send_params: it contains the IBKR Flex token under ``t``.
+        # Keep the provider code for diagnosis without emitting request/response
+        # content that could contain sensitive data.
+        raise RuntimeError(f"IBKR SendRequest failed (error code: {error_code})")
 
     reference_code = root.findtext("ReferenceCode")
 

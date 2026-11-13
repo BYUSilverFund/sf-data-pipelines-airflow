@@ -1010,8 +1010,28 @@ def data_integrity_pipeline():
                 )
             error_msg.append("=" * 90)
             logger.error("\n".join(error_msg))
+            # Include actionable diagnostics in the exception itself so Airflow's
+            # failure notification identifies the table and failed date comparison.
+            stale_details = []
+            for table_name, actual_max, expected_max, error in [
+                ("positions", max_pos, max_cal, pos_err),
+                ("historical_data", max_hist, max_cal, hist_err),
+                ("holding_returns", max_hold, max_cal, hold_err),
+                ("fund_returns", max_fund, max_cal, fund_err),
+                ("all_fund_returns", max_all_fund, max_cal, all_fund_err),
+                ("risk_free_rate", max_rfr, prev_cal, rfr_err),
+            ]:
+                if error is not None:
+                    comparison = ">= previous calendar date" if table_name == "risk_free_rate" else "= latest calendar date"
+                    stale_details.append(
+                        f"{table_name}: max_date={actual_max}, expected {comparison} {expected_max} ({error})"
+                    )
+            future_details = [f"{table_name}: {count} future rows" for table_name, count in future_failures]
+            details = stale_details + future_details
             raise ValueError(
-                f"Data integrity failed with {len(future_failures)} future date tables and {len(stale_errors)} stale tables!"
+                f"Data integrity failed: {len(stale_errors)} stale table(s), "
+                f"{len(future_failures)} future-dated table(s). Details: "
+                + "; ".join(details)
             )
 
     @task

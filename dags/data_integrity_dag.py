@@ -918,6 +918,10 @@ def data_integrity_pipeline():
                 SELECT 
                     (SELECT MAX(date) FROM calendar) AS max_calendar,
                     (SELECT MAX(date) FROM calendar WHERE date < (SELECT MAX(date) FROM calendar)) AS prev_calendar,
+                    (SELECT MAX(date) FROM calendar WHERE date < (
+                        SELECT MAX(date) FROM calendar
+                        WHERE date < (SELECT MAX(date) FROM calendar)
+                    )) AS prev2_calendar,
                     (SELECT MAX(report_date) FROM positions) AS max_positions,
                     (SELECT MAX(report_date) FROM historical_data) AS max_historical_data,
                     (SELECT MAX(date) FROM holding_returns) AS max_holding_returns,
@@ -928,6 +932,7 @@ def data_integrity_pipeline():
             SELECT 
                 max_calendar,
                 prev_calendar,
+                prev2_calendar,
                 max_positions,
                 max_historical_data,
                 max_holding_returns,
@@ -939,13 +944,14 @@ def data_integrity_pipeline():
                 CASE WHEN max_holding_returns != max_calendar THEN 'HOLDING_RETURNS_STALE' END AS hold_err,
                 CASE WHEN max_fund_returns != max_calendar THEN 'FUND_RETURNS_STALE' END AS fund_err,
                 CASE WHEN max_all_fund_returns != max_calendar THEN 'ALL_FUND_RETURNS_STALE' END AS all_fund_err,
-                CASE WHEN max_risk_free_rate < prev_calendar THEN 'RISK_FREE_RATE_STALE' END AS rfr_err
+                CASE WHEN max_risk_free_rate < prev2_calendar THEN 'RISK_FREE_RATE_STALE' END AS rfr_err
             FROM max_dates;
         """
         freshness_row = hook.get_records(freshness_sql)[0]
         (
             max_cal,
             prev_cal,
+            prev2_cal,
             max_pos,
             max_hist,
             max_hold,
@@ -1019,10 +1025,10 @@ def data_integrity_pipeline():
                 ("holding_returns", max_hold, max_cal, hold_err),
                 ("fund_returns", max_fund, max_cal, fund_err),
                 ("all_fund_returns", max_all_fund, max_cal, all_fund_err),
-                ("risk_free_rate", max_rfr, prev_cal, rfr_err),
+                ("risk_free_rate", max_rfr, prev2_cal, rfr_err),
             ]:
                 if error is not None:
-                    comparison = ">= previous calendar date" if table_name == "risk_free_rate" else "= latest calendar date"
+                    comparison = ">= two calendar dates behind" if table_name == "risk_free_rate" else "= latest calendar date"
                     stale_details.append(
                         f"{table_name}: max_date={actual_max}, expected {comparison} {expected_max} ({error})"
                     )

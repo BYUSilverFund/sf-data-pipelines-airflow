@@ -1028,11 +1028,18 @@ def data_integrity_pipeline():
                 ("risk_free_rate", max_rfr, prev2_cal, rfr_err),
             ]:
                 if error is not None:
-                    comparison = ">= two calendar dates behind" if table_name == "risk_free_rate" else "= latest calendar date"
+                    comparison = (
+                        ">= two calendar dates behind"
+                        if table_name == "risk_free_rate"
+                        else "= latest calendar date"
+                    )
                     stale_details.append(
                         f"{table_name}: max_date={actual_max}, expected {comparison} {expected_max} ({error})"
                     )
-            future_details = [f"{table_name}: {count} future rows" for table_name, count in future_failures]
+            future_details = [
+                f"{table_name}: {count} future rows"
+                for table_name, count in future_failures
+            ]
             details = stale_details + future_details
             raise ValueError(
                 f"Data integrity failed: {len(stale_errors)} stale table(s), "
